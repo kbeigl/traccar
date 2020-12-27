@@ -56,9 +56,9 @@ import org.traccar.model.Maintenance;
 import org.traccar.model.Notification;
 import org.traccar.model.User;
 import org.traccar.notification.EventForwarder;
-import org.traccar.notification.JsonTypeEventForwarder;
 import org.traccar.notification.NotificatorManager;
 import org.traccar.reports.model.TripsConfig;
+import org.traccar.schedule.ScheduleManager;
 import org.traccar.sms.SmsManager;
 import org.traccar.sms.smpp.SmppClient;
 import org.traccar.web.WebServer;
@@ -163,6 +163,12 @@ public final class Context {
 
     public static ServerManager getServerManager() {
         return serverManager;
+    }
+
+    private static ScheduleManager scheduleManager;
+
+    public static ScheduleManager getScheduleManager() {
+        return scheduleManager;
     }
 
     private static GeofenceManager geofenceManager;
@@ -332,9 +338,10 @@ public final class Context {
         }
 
         serverManager = new ServerManager();
+        scheduleManager = new ScheduleManager();
 
         if (config.getBoolean("event.forward.enable")) {
-            eventForwarder = new JsonTypeEventForwarder();
+            eventForwarder = new EventForwarder();
         }
 
         attributesManager = new AttributesManager(dataManager);

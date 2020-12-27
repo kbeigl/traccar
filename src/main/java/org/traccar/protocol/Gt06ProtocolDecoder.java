@@ -83,12 +83,13 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
     public static final int MSG_X1_PHOTO_DATA = 0x36;
     public static final int MSG_WIFI_2 = 0x69;
     public static final int MSG_GPS_MODULAR = 0x70;
+    public static final int MSG_WIFI_4 = 0xF3;
     public static final int MSG_COMMAND_0 = 0x80;
     public static final int MSG_COMMAND_1 = 0x81;
     public static final int MSG_COMMAND_2 = 0x82;
     public static final int MSG_TIME_REQUEST = 0x8A;
     public static final int MSG_INFO = 0x94;
-    public static final int MSG_RFID = 0x9B;
+    public static final int MSG_SERIAL = 0x9B;
     public static final int MSG_STRING_INFO = 0x21;
     public static final int MSG_GPS_2 = 0xA0;
     public static final int MSG_LBS_2 = 0xA1;
@@ -213,6 +214,12 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
     }
 
     public static boolean decodeGps(Position position, ByteBuf buf, boolean hasLength, TimeZone timezone) {
+        return decodeGps(position, buf, hasLength, true, true, timezone);
+    }
+
+    public static boolean decodeGps(
+            Position position, ByteBuf buf, boolean hasLength, boolean hasSatellites,
+            boolean hasSpeed, TimeZone timezone) {
 
         DateBuilder dateBuilder = new DateBuilder(timezone)
                 .setDate(buf.readUnsignedByte(), buf.readUnsignedByte(), buf.readUnsignedByte())
@@ -223,11 +230,16 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
             return false;
         }
 
-        position.set(Position.KEY_SATELLITES, BitUtil.to(buf.readUnsignedByte(), 4));
+        if (hasSatellites) {
+            position.set(Position.KEY_SATELLITES, BitUtil.to(buf.readUnsignedByte(), 4));
+        }
 
         double latitude = buf.readUnsignedInt() / 60.0 / 30000.0;
         double longitude = buf.readUnsignedInt() / 60.0 / 30000.0;
-        position.setSpeed(UnitsConverter.knotsFromKph(buf.readUnsignedByte()));
+
+        if (hasSpeed) {
+            position.setSpeed(UnitsConverter.knotsFromKph(buf.readUnsignedByte()));
+        }
 
         int flags = buf.readUnsignedShort();
         position.setCourse(BitUtil.to(flags, 10));
@@ -510,7 +522,7 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
 
             return decodeX1(channel, buf, deviceSession, type);
 
-        } else if (type == MSG_WIFI || type == MSG_WIFI_2) {
+        } else if (type == MSG_WIFI || type == MSG_WIFI_2 || type == MSG_WIFI_4) {
 
             return decodeWifi(channel, buf, deviceSession, type);
 
@@ -609,34 +621,51 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
 
         Network network = new Network();
 
-        int wifiCount = buf.getByte(2);
-        for (int i = 0; i < wifiCount; i++) {
-            String mac = String.format("%02x:%02x:%02x:%02x:%02x:%02x",
-                    buf.readUnsignedByte(), buf.readUnsignedByte(), buf.readUnsignedByte(),
-                    buf.readUnsignedByte(), buf.readUnsignedByte(), buf.readUnsignedByte());
-            network.addWifiAccessPoint(WifiAccessPoint.from(mac, buf.readUnsignedByte()));
+        int wifiCount;
+        if (type == MSG_WIFI_4) {
+            wifiCount = buf.readUnsignedByte();
+        } else {
+            wifiCount = buf.getUnsignedByte(2);
         }
 
-        int cellCount = buf.readUnsignedByte();
-        int mcc = buf.readUnsignedShort();
-        int mnc = buf.readUnsignedByte();
-        for (int i = 0; i < cellCount; i++) {
-            network.addCellTower(CellTower.from(
-                    mcc, mnc, buf.readUnsignedShort(), buf.readUnsignedShort(), buf.readUnsignedByte()));
+        for (int i = 0; i < wifiCount; i++) {
+            if (type == MSG_WIFI_4) {
+                buf.skipBytes(2);
+            }
+            WifiAccessPoint wifiAccessPoint = new WifiAccessPoint();
+            wifiAccessPoint.setMacAddress(String.format("%02x:%02x:%02x:%02x:%02x:%02x",
+                    buf.readUnsignedByte(), buf.readUnsignedByte(), buf.readUnsignedByte(),
+                    buf.readUnsignedByte(), buf.readUnsignedByte(), buf.readUnsignedByte()));
+            if (type != MSG_WIFI_4) {
+                wifiAccessPoint.setSignalStrength((int) buf.readUnsignedByte());
+            }
+            network.addWifiAccessPoint(wifiAccessPoint);
+        }
+
+        if (type != MSG_WIFI_4) {
+
+            int cellCount = buf.readUnsignedByte();
+            int mcc = buf.readUnsignedShort();
+            int mnc = buf.readUnsignedByte();
+            for (int i = 0; i < cellCount; i++) {
+                network.addCellTower(CellTower.from(
+                        mcc, mnc, buf.readUnsignedShort(), buf.readUnsignedShort(), buf.readUnsignedByte()));
+            }
+
+            if (channel != null) {
+                ByteBuf response = Unpooled.buffer();
+                response.writeShort(0x7878);
+                response.writeByte(0);
+                response.writeByte(type);
+                response.writeBytes(time.resetReaderIndex());
+                response.writeByte('\r');
+                response.writeByte('\n');
+                channel.writeAndFlush(new NetworkMessage(response, channel.remoteAddress()));
+            }
+
         }
 
         position.setNetwork(network);
-
-        if (channel != null) {
-            ByteBuf response = Unpooled.buffer();
-            response.writeShort(0x7878);
-            response.writeByte(0);
-            response.writeByte(type);
-            response.writeBytes(time.resetReaderIndex());
-            response.writeByte('\r');
-            response.writeByte('\n');
-            channel.writeAndFlush(new NetworkMessage(response, channel.remoteAddress()));
-        }
 
         return position;
     }
@@ -732,16 +761,20 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
             decodeBasicUniversal(buf, deviceSession, type, position);
 
         } else if (type == MSG_ALARM) {
-
-            DateBuilder dateBuilder = new DateBuilder(deviceSession.getTimeZone())
-                    .setDate(buf.readUnsignedByte(), buf.readUnsignedByte(), buf.readUnsignedByte())
-                    .setTime(buf.readUnsignedByte(), buf.readUnsignedByte(), buf.readUnsignedByte());
-
-            getLastLocation(position, dateBuilder.getDate());
-
+            boolean extendedAlarm = dataLength > 7;
+            if (extendedAlarm) {
+                decodeGps(position, buf, false, false, false, deviceSession.getTimeZone());
+            } else {
+                DateBuilder dateBuilder = new DateBuilder(deviceSession.getTimeZone())
+                        .setDate(buf.readUnsignedByte(), buf.readUnsignedByte(), buf.readUnsignedByte())
+                        .setTime(buf.readUnsignedByte(), buf.readUnsignedByte(), buf.readUnsignedByte());
+                getLastLocation(position, dateBuilder.getDate());
+            }
             short alarmType = buf.readUnsignedByte();
-
             switch (alarmType) {
+                case 0x01:
+                    position.set(Position.KEY_ALARM, extendedAlarm ? Position.ALARM_SOS : Position.ALARM_GENERAL);
+                    break;
                 case 0x80:
                     position.set(Position.KEY_ALARM, Position.ALARM_VIBRATION);
                     break;
@@ -757,13 +790,13 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
                 case 0x92:
                     position.set(Position.KEY_ALARM, Position.ALARM_CORNERING);
                     break;
+                case 0x93:
+                    position.set(Position.KEY_ALARM, Position.ALARM_ACCIDENT);
+                    break;
                 default:
                     position.set(Position.KEY_ALARM, Position.ALARM_GENERAL);
                     break;
             }
-
-            position.set("alarmValue", buf.readShort());
-
         } else {
 
             if (dataLength > 0) {
@@ -1039,18 +1072,6 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
 
             return position;
 
-        } else if (type == MSG_RFID) {
-
-            getLastLocation(position, null);
-
-            buf.readUnsignedByte(); // external device type code
-            buf.readUnsignedByte(); // card type
-            position.set(
-                    Position.KEY_DRIVER_UNIQUE_ID,
-                    buf.readCharSequence(buf.readableBytes() - 9, StandardCharsets.US_ASCII).toString());
-
-            return position;
-
         } else if (type == MSG_GPS_MODULAR) {
 
             return decodeExtendedModular(buf, deviceSession);
@@ -1215,6 +1236,30 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
             }
 
             sendResponse(channel, true, type, buf.getShort(buf.writerIndex() - 6), null);
+
+            return position;
+
+        } else if (type == MSG_SERIAL) {
+
+            position = new Position(getProtocolName());
+            position.setDeviceId(deviceSession.getDeviceId());
+            getLastLocation(position, null);
+
+            buf.readUnsignedByte(); // external device type code
+            int length = buf.readableBytes() - 9; // line break + checksum + index + checksum + footer
+
+            if (length <= 0) {
+                return null;
+            } else if (length < 8) {
+                position.set(
+                        Position.PREFIX_TEMP + 1,
+                        Double.parseDouble(buf.readCharSequence(length - 1, StandardCharsets.US_ASCII).toString()));
+            } else {
+                buf.readUnsignedByte(); // card type
+                position.set(
+                        Position.KEY_DRIVER_UNIQUE_ID,
+                        buf.readCharSequence(length - 1, StandardCharsets.US_ASCII).toString());
+            }
 
             return position;
 

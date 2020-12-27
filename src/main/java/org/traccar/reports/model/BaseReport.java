@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2016 - 2020 Anton Tananaev (anton@traccar.org)
  * Copyright 2016 Andrey Kunitsyn (andrey@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 package org.traccar.reports.model;
+
+import java.util.Date;
 
 public class BaseReport {
 
@@ -58,7 +60,7 @@ public class BaseReport {
         return averageSpeed;
     }
 
-    public void setAverageSpeed(Double averageSpeed) {
+    public void setAverageSpeed(double averageSpeed) {
         this.averageSpeed = averageSpeed;
     }
 
@@ -69,9 +71,7 @@ public class BaseReport {
     }
 
     public void setMaxSpeed(double maxSpeed) {
-        if (maxSpeed > this.maxSpeed) {
-            this.maxSpeed = maxSpeed;
-        }
+        this.maxSpeed = maxSpeed;
     }
 
     private double spentFuel;
@@ -101,6 +101,26 @@ public class BaseReport {
 
     public void setEndOdometer(double endOdometer) {
         this.endOdometer = endOdometer;
+    }
+
+    private Date startTime;
+
+    public Date getStartTime() {
+        return startTime;
+    }
+
+    public void setStartTime(Date startTime) {
+        this.startTime = startTime;
+    }
+
+    private Date endTime;
+
+    public Date getEndTime() {
+        return endTime;
+    }
+
+    public void setEndTime(Date endTime) {
+        this.endTime = endTime;
     }
 
 }

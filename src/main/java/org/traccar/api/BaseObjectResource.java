@@ -44,7 +44,7 @@ import org.traccar.model.User;
 
 public abstract class BaseObjectResource<T extends BaseModel> extends BaseResource {
 
-    private Class<T> baseClass;
+    private final Class<T> baseClass;
 
     public BaseObjectResource(Class<T> baseClass) {
         this.baseClass = baseClass;
@@ -75,7 +75,7 @@ public abstract class BaseObjectResource<T extends BaseModel> extends BaseResour
 
     @Path("{id}")
     @GET
-    public Response add(@PathParam("id") long id) throws SQLException {
+    public Response getSingle(@PathParam("id") long id) throws SQLException {
         Context.getPermissionsManager().checkPermission(baseClass, getUserId(), id);
         BaseObjectManager<T> manager = Context.getManager(baseClass);
         T entity = manager.getById(id);

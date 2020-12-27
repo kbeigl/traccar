@@ -11,6 +11,17 @@ public class StarLinkProtocolDecoderTest extends ProtocolTest {
 
         StarLinkProtocolDecoder decoder = new StarLinkProtocolDecoder(null);
 
+        decoder.setFormat("#IMEI#,#EDT#,#EDSC#,#EID#,#PDT#,#LAT#,#LONG#,#SPDK#,#IGNL#,#HEAD#,#ODO#,#DUR#,#TDUR#,#VIN#,#VBAT#,#BATC#,#SATU#,#CSS#,#IN2#,#TVI#,#OUT1#,#OUT2#,#OUT3#,#OUTC#");
+
+        verifyAttributes(decoder, text(
+                "$SLU862549048423605,06,22597,862549048423605,201102121748,Location,01,201102121744,+4133.1223,+00205.8716,54,1,174,007572,2,7712,13.094,00.039,,11,75,1,29.0,0,0,0,0,1,4*6D"));
+
+        decoder.setFormat("#IMEI#,#EDT#,#PDT#,#LAT#,#LONG#,#SPD#,#IGN#,#ODO#,#DUR#,#TDUR#,#LAC#,#CID#,#VIN#,#VBAT#,#EID#,#EDSC#,#DRV#,#SATU#,#CSS#,#OUT1#,#OUT2#,#IN2#,#IND#");
+
+        verifyAttribute(decoder, text(
+                "$SLU351580050543640,06,101,351580050543640,200927184734,200927184724,+4222.4186,+00153.1426,000.0,0,000008,,582,21269,214241628,00.213,03.407,09,Lost Power,0,5,96,0,0,0,1,,,,,,,,,,,,*10"),
+                Position.KEY_RSSI, 96);
+
         decoder.setFormat("#EDT#,#EID#,#PDT#,#LAT#,#LONG#,#SPD#,#HEAD#,#ODO#,#LAC#,#CID#,#VIN#,#VBAT#,#TI1#,#TS1#,#TV1#,#TH1#,#TD1#,#EDSC#,#TI2#,#TS2#,#TV2#,#TH2#,#TD2#");
 
         verifyAttribute(decoder, text(
